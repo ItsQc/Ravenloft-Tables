@@ -21,7 +21,7 @@ or ask in #Helpers
 ''' 
 
 
-from marketTables import *
+from tattooTables import *
 
 main()
 print("\nClick 'Run' to make another set of tables")
