@@ -169,7 +169,7 @@ class Table:
         for key in setOfTraits:
             traits[key] = False
 
-        if (self.RowInfo[row][merged] == True):
+        if self.RowInfo[row][merged] == True:
             traits[merged] = True
         if self.RowInfo[row][sectionMarker]:
             traits[sectionMarker] = True
@@ -178,7 +178,7 @@ class Table:
             traits[tableHead] = True
         elif row == len(self.RowInfo):
             traits[tableFoot] = True
-        elif self.RowInfo[row -1][sectionMarker]:
+        elif self.RowInfo[row - 1][sectionMarker]:
             traits[sectionHead] = True
 
         # Process information on next printable row
@@ -196,12 +196,12 @@ class Table:
         nextLine = []
 
         # Left edge and fill line
-        if traits[sectionFoot] or traits[sectionHead] or traits[tableHead]: # Next line is double
+        if traits[sectionFoot] or traits[sectionHead] or traits[tableHead]:  # Next line is double
             isDoubleLine = True
             nextLine.append(self.BoxChars["Left"]["Vertical"]["double"]["intersect"]["double"])
             nextLine.append(self.BoxChars["Horizontal"]["double"]["straight"])
             nextLine.append(self.BoxChars["Right"]["Vertical"]["double"]["intersect"]["double"])
-        else: # Next line is single
+        else:  # Next line is single
             isDoubleLine = False
             nextLine.append(self.BoxChars["Left"]["Vertical"]["double"]["intersect"]["single"])
             nextLine.append(self.BoxChars["Horizontal"]["single"]["straight"])
@@ -214,7 +214,7 @@ class Table:
                     nextLine.append(self.BoxChars["Horizontal"]["double"]["straight"])
                 else:
                     nextLine.append(self.BoxChars["Horizontal"]["single"]["straight"])
-            else: # points down
+            else:  # points down
                 if isDoubleLine:
                     nextLine.append(self.BoxChars["Horizontal"]["double"]["intersect"]["down"]["single"])
                 else:
@@ -233,7 +233,6 @@ class Table:
 
         return nextLine
 
-
     def printUnicodeTable(self):
         self.getRowTraits()
         self.measureDimensions()
@@ -247,6 +246,7 @@ class Table:
 
         for i in range(len(self.RowInfo)):
 
+            # Print table header (top row of table)
             if i == 0:
                 lineFill = self.BoxChars["Horizontal"]["double"]["straight"]
                 if self.RowInfo[i][self.MERGE_MARKER]:
@@ -265,13 +265,15 @@ class Table:
             edgeRight = ' ' + edgeRight + '\n'
 
             if self.Cell[i][left] != self.SECTION_MARKER:
-                ##if rowWraps < 1:
+
+                # Print Cell contents
                 if self.RowInfo[i][self.MERGE_MARKER]:
                     print(edgeLeft + "%s" % self.Cell[i][left].center(widthLeft + widthRight + 3), end=edgeRight)
                 else:
                     print(edgeLeft + "%s %s %s" % (self.Cell[i][left].center(widthLeft), separator,
                                                    self.Cell[i][right].center(widthRight)), end=edgeRight)
 
+                # Print table footer (last row of table)
                 if i == (len(self.RowInfo) - 1):
                     lineFill = self.BoxChars["Horizontal"]["double"]["straight"]
                     if self.RowInfo[i][self.MERGE_MARKER]:
@@ -282,6 +284,8 @@ class Table:
                           end=separator)
                     print("".rjust(widthRight + 2, lineFill),
                           end=(self.BoxChars["Right"]["Corner"]["Bottom"]["double"] + '\n'))
+
+                # Print line below cell content
                 else:
                     characters = self.getBoxCharsForRow(i)
                     edgeLeft = characters[0]
