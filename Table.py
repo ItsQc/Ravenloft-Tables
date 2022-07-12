@@ -1,16 +1,29 @@
+from math import *
+from easyWraps import *
+
+
 class Table:
-    def __init__(self, valuesList=[]):
+    def __init__(self, valuesList=[], text_wrapping=False, max_width=-1):
         self.Cell = []
         self.RowInfo = []
+        self.WrapSheet = []
         self.widestLeftColumn = 0
         self.widestRightColumn = 0
         self.widestRow = 0
-        self.widthAllowance = 30  # Orignally 28 -7 based on feedback from cellphone users.
+        self.TOTAL_WIDTH_MINIMUM = 28  # Originally 28 -7 based on feedback from cellphone users.
+        self.NON_CONTENT_WIDTH = 7
+        self.userWidth = max_width
+        if self.userWidth > self.TOTAL_WIDTH_MINIMUM:
+            self.widthAllowance = self.userWidth
+        else:
+            self.widthAllowance = self.TOTAL_WIDTH_MINIMUM
+        self.PerformWrapping = text_wrapping
         self.WrapsForRow = []
         self.DoesWrap = False
         self.numRowsWrapped = 0
         self.MERGE_MARKER = "MERGE"
         self.SECTION_MARKER = "ENDSECTION"
+        self.COMBINE_ROW_MARKER = "SAMELINE"
         self.BoxChars = {"Left":
                              {"Corner":
                                   {"Top":
@@ -85,7 +98,10 @@ class Table:
         self.widestLeftColumn = 0
         self.widestRightColumn = 0
         self.widestRow = 0
-        self.widthAllowance = 28 - 7
+        if self.userWidth > self.TOTAL_WIDTH_MINIMUM:
+            self.widthAllowance = self.userWidth
+        else:
+            self.widthAllowance = self.TOTAL_WIDTH_MINIMUM
         self.WrapsForRow = []
         self.DoesWrap = False
         self.numRowsWrapped = 0
@@ -93,10 +109,127 @@ class Table:
     def clearRowInfo(self):
         self.RowInfo = []
 
+    def getWrapItemNumber(self, wrap):
+        itemNumber = -1
+        for namedItem in range(len(self.WrapSheet)):
+            for rowAddress in range(len(self.WrapSheet[namedItem])):
+                if self.WrapSheet[namedItem][rowAddress] == wrap:
+                    itemNumber = namedItem
+                    break
+        return itemNumber
+
+    def refreshWrapSheet(self):
+        stepCount = 0
+        for namedItem in range(len(self.WrapSheet)):
+            for rowAddress in range(len(self.WrapSheet[namedItem])):
+                self.WrapSheet[namedItem][rowAddress] = stepCount
+                stepCount += 1
+
+    def addWraps(self, item, wraps):
+        for address in range(wraps):
+            self.WrapSheet[item].append([address])
+        self.refreshWrapSheet()
+
+    def columZipper(self, left_column, right_column):
+        if len(left_column) > len(right_column):
+            greaterColumn = left_column
+            lesserColumn = right_column
+            GreaterIsLeftmost = True
+        else:
+            greaterColumn = right_column
+            lesserColumn = left_column
+            GreaterIsLeftmost = False
+
+        if len(lesserColumn) == 0 or lesserColumn[0] == self.MERGE_MARKER:
+            filler = self.MERGE_MARKER
+        else:
+            filler = " "
+        for i in range(len(greaterColumn) - len(lesserColumn)):
+            lesserColumn.append(filler)
+
+        joinedColumns = []
+        if len(greaterColumn) == len(lesserColumn):
+            for j in range(len(greaterColumn)):
+                if GreaterIsLeftmost:
+                    joinedColumns.append([greaterColumn[j], lesserColumn[j]])
+                else:
+                    joinedColumns.append([lesserColumn[j], greaterColumn[j]])
+
+        return joinedColumns
+
+    def wrapTable(self, max_length= -1):
+        if self.DoesWrap:
+            if max_length < 1:
+                max_length = self.widthAllowance - self.NON_CONTENT_WIDTH
+
+            itemsToWrap = []
+            for i in range(len(self.WrapSheet)):
+                content = self.Cell[i][0]
+                if not ((content == self.COMBINE_ROW_MARKER) or (content == self.SECTION_MARKER)):
+                    itemsToWrap.append(self.WrapSheet[i])
+            itemsToWrap.reverse()
+            for item in itemsToWrap:
+                row = item[0]
+
+                if len(self.Cell[row][0]) > len(self.Cell[row][1]):
+                    smallerCell = 1
+                    largerCell = 0
+                    isLargerLeftmost = True
+                else:
+                    smallerCell = 0
+                    largerCell = 1
+                    isLargerLeftmost = False
+
+                if self.Cell[row][largerCell] != self.MERGE_MARKER:
+                    primaryLengthConstraint = max_length - len(self.Cell[row][smallerCell])
+                    primaryCells = shortestWrap(self.Cell[row][largerCell], primaryLengthConstraint)
+
+                    secondaryLengthConstraint = 0
+                    for cell in primaryCells:
+                        if len(cell) > secondaryLengthConstraint:
+                            secondaryLengthConstraint = len(cell)
+
+                    smallCellContent = self.Cell[row][smallerCell]
+                    if self.Cell[row][smallerCell] != self.MERGE_MARKER:
+                        secondaryCells = shortestWrap(self.Cell[row][smallerCell], (max_length - secondaryLengthConstraint))
+                        sameLineMarkers = [self.COMBINE_ROW_MARKER, self.MERGE_MARKER]
+                    else:
+                        secondaryCells = [self.MERGE_MARKER]
+                        sameLineMarkers = [self.COMBINE_ROW_MARKER, self.MERGE_MARKER]
+
+                    if largerCell == 0:
+                        newRows = self.columZipper(primaryCells, secondaryCells)
+                    else:
+                        newRows = self.columZipper(secondaryCells, primaryCells)
+
+                    self.addWraps(self.getWrapItemNumber(row), len(newRows))
+
+                    self.Cell.pop(row)
+                    for i in range(len(newRows)):
+                        line = newRows[i]
+                        if i == 0:
+                            self.Cell.insert(row, line)
+                        else:
+                            self.Cell.insert(previousLineIndex + 1, line)
+                        if i < (len(newRows) - 1):
+                            newRowIndex = self.Cell.index(line)
+                            self.Cell.insert(newRowIndex + 1, sameLineMarkers)
+                            previousLineIndex = self.Cell.index(sameLineMarkers, newRowIndex)
+
+
+                self.getRowTraits()
+                self.measureDimensions()
+
     def build(self, valuesList):
         self.fillCells(valuesList)
         self.measureDimensions()
         self.getRowTraits()
+        for i in range(len(self.Cell)):
+            self.WrapSheet.append([i])
+        self.refreshWrapSheet()
+
+        if self.PerformWrapping and self.DoesWrap:
+            self.wrapTable()
 
     def fillCells(self, valuesList):
         self.Cell = []
@@ -111,6 +244,20 @@ class Table:
             rightColumn = rightColumn.strip('"')
             self.Cell.append([leftColumn, rightColumn])
 
+    def checkToWrap(self, row):
+        left = 0
+        right = 1
+        leftValueLength = len(self.Cell[row][left])
+        rightValueLength = len(self.Cell[row][right])
+        if self.Cell[row][right] == self.MERGE_MARKER:
+            rightValueLength = 0
+
+        if (self.Cell[row][left] != self.SECTION_MARKER) and (self.Cell[row][left] != self.COMBINE_ROW_MARKER):
+            if leftValueLength > self.widestLeftColumn:
+                self.widestLeftColumn = leftValueLength
+            if rightValueLength > self.widestRightColumn:
+                self.widestRightColumn = rightValueLength
+
     def measureDimensions(self):
         self.clearMeasurements()
         left = 0
@@ -119,20 +266,20 @@ class Table:
         for row in range(len(self.Cell)):
             leftValueLength = len(self.Cell[row][left])
             rightValueLength = len(self.Cell[row][right])
+            if self.Cell[row][right] == self.MERGE_MARKER:
+                rightValueLength = 0
 
-            if self.Cell[row][left] != self.SECTION_MARKER:
+            if (self.Cell[row][left] != self.SECTION_MARKER) and (self.Cell[row][left] != self.COMBINE_ROW_MARKER) and \
+                    (self.Cell[row][right] != self.MERGE_MARKER):
                 if leftValueLength > self.widestLeftColumn:
                     self.widestLeftColumn = leftValueLength
                 if rightValueLength > self.widestRightColumn:
-                    if self.Cell[row][right] != self.MERGE_MARKER:
-                        self.widestRightColumn = rightValueLength
+                    self.widestRightColumn = rightValueLength
 
-                if self.widthAllowance < (leftValueLength + rightValueLength):
+                if self.widestRow < (leftValueLength + rightValueLength):
                     self.widestRow = leftValueLength + rightValueLength
                     self.WrapsForRow.append(row)
                     self.numRowsWrapped = self.numRowsWrapped + 1
-                else:
-                    self.WrapsForRow.append(0)
 
         if self.numRowsWrapped > 0:
             self.DoesWrap = True
@@ -147,15 +294,22 @@ class Table:
                 merge = True
             else:
                 merge = False
+
             if self.Cell[row][left] == self.SECTION_MARKER:
                 sectionEnd = True
             else:
                 sectionEnd = False
 
-            self.RowInfo.append({self.MERGE_MARKER: merge, self.SECTION_MARKER: sectionEnd})
+            if self.Cell[row][left] == self.COMBINE_ROW_MARKER:
+                combine = True
+            else:
+                combine = False
+
+            self.RowInfo.append({self.MERGE_MARKER: merge, self.SECTION_MARKER: sectionEnd, self.COMBINE_ROW_MARKER: combine})
 
     def getBoxCharsForRow(self, row):
         merged = self.MERGE_MARKER
+        noPrint = self.COMBINE_ROW_MARKER
         nextMerged = "Next Merged"
         sectionHead = "Section Head"
         tableHead = "Table Head"
@@ -163,16 +317,39 @@ class Table:
         tableFoot = "Table Foot"
         prevMerged = "Previous Merged"
         sectionMarker = self.SECTION_MARKER
-        setOfTraits = [merged, nextMerged, sectionHead, tableHead, sectionMarker, sectionFoot, sectionMarker, prevMerged]
+        setOfTraits = [merged, nextMerged, sectionHead, tableHead, sectionMarker, sectionFoot, sectionMarker,
+                       prevMerged]
 
         traits = dict()
         for key in setOfTraits:
             traits[key] = False
 
-        if self.RowInfo[row][merged] == True:
+        if self.RowInfo[row][merged]:
             traits[merged] = True
         if self.RowInfo[row][sectionMarker]:
             traits[sectionMarker] = True
+
+        # Adjust for multi-line rows due to text wrapping
+        nextPrintableRow = row
+        nextFound = False
+        checkRow = row + 1
+        while (not nextFound) and (checkRow < (len(self.Cell) - 1)):
+            if not self.RowInfo[checkRow][noPrint]:
+                nextPrintableRow = checkRow
+                nextFound = True
+            else:
+                checkRow += 1
+
+        secondNextPrintableRow = nextPrintableRow
+        for i in range(len(self.Cell) - (nextPrintableRow - 1)):
+            nextFound = False
+            checkRow = nextPrintableRow + 1
+            while (not nextFound) and (checkRow < (len(self.Cell) - 1)):
+                if not self.RowInfo[checkRow][noPrint]:
+                    secondNextPrintableRow = checkRow
+                    nextFound = True
+                else:
+                    checkRow += 1
 
         if row == 0:
             traits[tableHead] = True
@@ -180,14 +357,21 @@ class Table:
             traits[tableFoot] = True
         elif self.RowInfo[row - 1][sectionMarker]:
             traits[sectionHead] = True
-
-        # Process information on next printable row
         else:
-            if self.RowInfo[row + 1][sectionMarker]:
+            # Check if part of a multi-line section head or table head
+            previousPrintableRow = row - 1
+            while self.RowInfo[previousPrintableRow][noPrint] and (previousPrintableRow > -1):
+                previousPrintableRow -= 1
+
+            if previousPrintableRow == 0 or self.RowInfo[previousPrintableRow][self.SECTION_MARKER]:
+                traits[sectionHead] = True
+
+            # Process information for next printable rows
+            if self.RowInfo[nextPrintableRow][sectionMarker]:
                 traits[sectionFoot] = True
                 # If row is a sectionFoot then need to check row after the section marker row
                 if row < len(self.RowInfo):
-                    if self.RowInfo[row + 2][merged]:
+                    if self.RowInfo[secondNextPrintableRow][merged]:
                         traits[nextMerged] = True
             else:
                 if self.RowInfo[row + 1][merged]:
@@ -240,14 +424,12 @@ class Table:
 
         left = 0
         right = 1
-        rowWraps = self.numRowsWrapped
         widthLeft = self.widestLeftColumn
         widthRight = self.widestRightColumn
 
         for i in range(len(self.RowInfo)):
 
-            # Print table header (top row of table)
-            if i == 0:
+            if i == 0:  # Print Table Header
                 lineFill = self.BoxChars["Horizontal"]["double"]["straight"]
                 if self.RowInfo[i][self.MERGE_MARKER]:
                     separator = lineFill
@@ -264,16 +446,15 @@ class Table:
             edgeRight = self.BoxChars["Right"]["Vertical"]["double"]["straight"]
             edgeRight = ' ' + edgeRight + '\n'
 
-            if self.Cell[i][left] != self.SECTION_MARKER:
+            if (not self.RowInfo[i][self.COMBINE_ROW_MARKER]) and (self.Cell[i][left] != self.SECTION_MARKER):
 
-                # Print Cell contents
                 if self.RowInfo[i][self.MERGE_MARKER]:
                     print(edgeLeft + "%s" % self.Cell[i][left].center(widthLeft + widthRight + 3), end=edgeRight)
                 else:
                     print(edgeLeft + "%s %s %s" % (self.Cell[i][left].center(widthLeft), separator,
                                                    self.Cell[i][right].center(widthRight)), end=edgeRight)
 
-                # Print table footer (last row of table)
+                # Print Table Footer
                 if i == (len(self.RowInfo) - 1):
                     lineFill = self.BoxChars["Horizontal"]["double"]["straight"]
                     if self.RowInfo[i][self.MERGE_MARKER]:
@@ -285,8 +466,7 @@ class Table:
                     print("".rjust(widthRight + 2, lineFill),
                           end=(self.BoxChars["Right"]["Corner"]["Bottom"]["double"] + '\n'))
 
-                # Print line below cell content
-                else:
+                elif not self.RowInfo[i + 1][self.COMBINE_ROW_MARKER]:  # Print bottom line of row
                     characters = self.getBoxCharsForRow(i)
                     edgeLeft = characters[0]
                     lineFill = characters[1]
@@ -297,5 +477,3 @@ class Table:
                     print("".rjust(widthRight + 2, lineFill), end=edgeRight)
 
         print("```")
-
-        ##print("Width: left %d, right %d, combined %d" % (widthLeft, widthRight, (widthLeft + widthRight)))
